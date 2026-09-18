@@ -9,13 +9,14 @@ import { ProgressBar } from '@openng/optimus-ui/progressbar';
 import { Textarea } from '@openng/optimus-ui/textarea';
 import { Toast } from '@openng/optimus-ui/toast';
 import { CATEGORY_META, WorkCategory, WorkEntry } from './core/work-entry.model';
+import { SchoolYearStore } from './core/school-year.store';
 import { WorkTimeStore } from './core/work-time.store';
 
 import { isoDate, weekStart, periodBounds, shiftPeriod, WorkPeriod } from './core/work-date';
 
 type View = 'capture' | 'overview' | 'analysis';
 type EntryMode = 'manual' | 'timer';
-type AnalysisPeriod = WorkPeriod;
+type AnalysisPeriod = WorkPeriod | 'schoolYear';
 
 @Component({
   selector: 'app-root',
@@ -36,6 +37,70 @@ type AnalysisPeriod = WorkPeriod;
 })
 export class App implements OnDestroy {
   private readonly store = inject(WorkTimeStore);
+  private readonly schoolYearStore = inject(SchoolYearStore);
+  protected readonly schoolYears = this.schoolYearStore.years;
+  protected readonly selectedSchoolYearId = signal(
+    this.schoolYears().find(
+      (year) => year.start <= isoDate(new Date()) && year.end >= isoDate(new Date()),
+    )?.id ??
+      this.schoolYears().at(-1)?.id ??
+      '',
+  );
+  protected readonly selectedSchoolYear = computed(() =>
+    this.schoolYears().find((year) => year.id === this.selectedSchoolYearId()),
+  );
+  protected readonly schoolYearLabel = computed(
+    () => this.selectedSchoolYear()?.name ?? 'Noch nicht angelegt',
+  );
+  protected readonly showSchoolYears = signal(false);
+  protected readonly schoolYearError = signal('');
+  protected readonly schoolYearForm = new FormGroup({
+    name: new FormControl('', {
+      nonNullable: true,
+      validators: [Validators.required, Validators.maxLength(80)],
+    }),
+    start: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+    end: new FormControl('', { nonNullable: true, validators: [Validators.required] }),
+  });
+  protected readonly unassignedCount = computed(
+    () =>
+      this.store
+        .entries()
+        .filter(
+          (entry) =>
+            !this.schoolYears().some((year) => entry.date >= year.start && entry.date <= year.end),
+        ).length,
+  );
+
+  protected saveSchoolYear(): void {
+    this.schoolYearForm.markAllAsTouched();
+    this.schoolYearError.set('');
+    if (this.schoolYearForm.invalid) {
+      this.schoolYearError.set('Bitte Name, Startdatum und Enddatum vollständig ausfüllen.');
+      return;
+    }
+    try {
+      const year = this.schoolYearStore.add(this.schoolYearForm.getRawValue());
+      this.selectedSchoolYearId.set(year.id);
+      this.schoolYearForm.reset();
+      this.messages.add({
+        severity: 'success',
+        summary: 'Schuljahr angelegt',
+        detail: 'Zeiteinträge werden anhand ihres Datums zugeordnet.',
+      });
+    } catch (error) {
+      this.schoolYearError.set(
+        error instanceof Error ? error.message : 'Das Schuljahr konnte nicht gespeichert werden.',
+      );
+    }
+  }
+
+  protected canChangeAnalysisPeriod(direction: number): boolean {
+    if (this.analysisPeriod() !== 'schoolYear') return true;
+    const index = this.schoolYears().findIndex((year) => year.id === this.selectedSchoolYearId());
+    return index >= 0 && !!this.schoolYears()[index + direction];
+  }
+
   private readonly messages = inject(MessageService);
   private timerHandle?: ReturnType<typeof setInterval>;
 
@@ -240,18 +305,28 @@ export class App implements OnDestroy {
   }
 
   protected readonly weekLabel = computed(() => this.dateRangeLabel(this.overviewDate(), 6));
-  private readonly schoolYearStart = periodBounds(new Date(), 'schoolYear').start.getFullYear();
-  protected readonly schoolYearLabel = `${this.schoolYearStart} / ${String(this.schoolYearStart + 1).slice(-2)}`;
-  protected readonly analysisEntries = computed(() =>
-    this.entriesInPeriod(this.analysisDate(), this.analysisPeriod()),
-  );
+  protected readonly analysisEntries = computed(() => {
+    const period = this.analysisPeriod();
+    if (period !== 'schoolYear') return this.entriesInPeriod(this.analysisDate(), period);
+    const year = this.selectedSchoolYear();
+    return year
+      ? this.store.entries().filter((entry) => entry.date >= year.start && entry.date <= year.end)
+      : [];
+  });
 
   protected changeWeek(direction: number): void {
     this.overviewDate.update((date) => shiftPeriod(date, 'week', direction));
   }
 
   protected changeAnalysisPeriod(direction: number): void {
-    this.analysisDate.update((date) => shiftPeriod(date, this.analysisPeriod(), direction));
+    const period = this.analysisPeriod();
+    if (period === 'schoolYear') {
+      const index = this.schoolYears().findIndex((year) => year.id === this.selectedSchoolYearId());
+      const year = this.schoolYears()[index + direction];
+      if (index >= 0 && year) this.selectedSchoolYearId.set(year.id);
+    } else {
+      this.analysisDate.update((date) => shiftPeriod(date, period, direction));
+    }
   }
 
   private entriesInPeriod(date: Date, period: WorkPeriod): readonly WorkEntry[] {
@@ -311,12 +386,20 @@ export class App implements OnDestroy {
 
   protected readonly analysisBars = computed(() => {
     const period = this.analysisPeriod();
-    const { start, end } = periodBounds(this.analysisDate(), period);
+    const year = this.selectedSchoolYear();
+    if (period === 'schoolYear' && !year) return [];
+    const { start, end } =
+      period === 'schoolYear' && year
+        ? { start: new Date(`${year.start}T00:00:00`), end: new Date(`${year.end}T00:00:00`) }
+        : periodBounds(this.analysisDate(), period as WorkPeriod);
+    if (period === 'schoolYear') end.setDate(end.getDate() + 1);
     const bars = [];
     for (let date = new Date(start); date < end;) {
       const next = new Date(date);
-      if (period === 'schoolYear') next.setMonth(next.getMonth() + 1);
-      else next.setDate(next.getDate() + 1);
+      if (period === 'schoolYear') {
+        next.setDate(1);
+        next.setMonth(next.getMonth() + 1);
+      } else next.setDate(next.getDate() + 1);
       const minutes = this.analysisEntries()
         .filter((entry) => entry.date >= isoDate(date) && entry.date < isoDate(next))
         .reduce((sum, entry) => sum + entry.durationMinutes, 0);
@@ -346,7 +429,8 @@ export class App implements OnDestroy {
 
   protected periodLabel(): string {
     const date = this.analysisDate();
-    const { start } = periodBounds(date, this.analysisPeriod());
+    const period = this.analysisPeriod();
+    const start = period === 'schoolYear' ? date : periodBounds(date, period).start;
     switch (this.analysisPeriod()) {
       case 'day':
         return new Intl.DateTimeFormat('de-DE', {
@@ -360,7 +444,9 @@ export class App implements OnDestroy {
       case 'month':
         return new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(date);
       case 'schoolYear':
-        return `Schuljahr ${start.getFullYear()} / ${String(start.getFullYear() + 1).slice(-2)}`;
+        return this.selectedSchoolYear()
+          ? `Schuljahr ${this.selectedSchoolYear()!.name}`
+          : 'Kein Schuljahr angelegt';
     }
   }
 

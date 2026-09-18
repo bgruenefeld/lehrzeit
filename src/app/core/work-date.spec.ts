@@ -14,12 +14,4 @@ describe('work date periods', () => {
     expect(isoDate(periodBounds(next, 'month').end)).toBe('2024-03-01');
     expect(isoDate(shiftPeriod(new Date(2024, 1, 28), 'day', 1))).toBe('2024-02-29');
   });
-
-  it('uses August through July for school years in either direction', () => {
-    const bounds = periodBounds(new Date(2026, 6, 31), 'schoolYear');
-    expect(isoDate(bounds.start)).toBe('2025-08-01');
-    expect(isoDate(bounds.end)).toBe('2026-08-01');
-    expect(isoDate(shiftPeriod(bounds.start, 'schoolYear', 1))).toBe('2026-08-01');
-    expect(isoDate(shiftPeriod(bounds.end, 'schoolYear', -1))).toBe('2025-08-01');
-  });
 });

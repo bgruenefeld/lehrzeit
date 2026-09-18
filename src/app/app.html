@@ -21,7 +21,7 @@
       </button>
     </nav>
     <div class="school-year">
-      <span>Schuljahr</span><strong>{{ schoolYearLabel }}</strong>
+      <span>Schuljahr</span><strong>{{ schoolYearLabel() }}</strong>
     </div>
   </aside>
 
@@ -31,11 +31,77 @@
         <p>{{ todayLabel }}</p>
         <h1>{{ pageTitle() }}</h1>
       </div>
-      <button class="round-button" type="button" aria-label="Einstellungen">
+      <button
+        class="round-button"
+        type="button"
+        aria-label="Schuljahre verwalten"
+        [attr.aria-expanded]="showSchoolYears()"
+        (click)="showSchoolYears.set(!showSchoolYears())"
+      >
         <i class="pi pi-cog"></i>
       </button>
     </header>
 
+    @if (showSchoolYears()) {
+      <section class="card school-year-manager" aria-labelledby="school-years-title">
+        <div class="card-heading">
+          <div>
+            <p>Einstellungen</p>
+            <h2 id="school-years-title">Schuljahre verwalten</h2>
+          </div>
+          <button
+            class="round-button"
+            type="button"
+            aria-label="Schuljahrverwaltung schließen"
+            (click)="showSchoolYears.set(false)"
+          >
+            <i class="pi pi-times"></i>
+          </button>
+        </div>
+        <p>
+          Lege den ersten und letzten Tag des Schuljahres fest. Beide Tage gehören zum Zeitraum.
+          Zeiteinträge werden automatisch nach ihrem Datum zugeordnet.
+        </p>
+        <ul class="school-year-list">
+          @for (year of schoolYears(); track year.id) {
+            <li>
+              <strong>{{ year.name }}</strong
+              ><span
+                >{{ year.start | date: 'dd.MM.yyyy' }} – {{ year.end | date: 'dd.MM.yyyy' }}</span
+              >
+            </li>
+          } @empty {
+            <li>Noch kein Schuljahr angelegt.</li>
+          }
+        </ul>
+        @if (unassignedCount()) {
+          <p>
+            {{ unassignedCount() }} Zeiteinträge liegen außerhalb der angelegten Schuljahre. Sie
+            bleiben in Tages-, Wochen- und Monatsauswertungen sichtbar.
+          </p>
+        }
+        <form class="school-year-form" [formGroup]="schoolYearForm" (ngSubmit)="saveSchoolYear()">
+          <h3>Neues Schuljahr</h3>
+          <label class="field"
+            ><span>Name</span
+            ><input formControlName="name" maxlength="80" placeholder="z. B. 2026 / 27" required
+          /></label>
+          <div class="school-year-dates">
+            <label class="field"
+              ><span>Startdatum</span><input type="date" formControlName="start" required
+            /></label>
+            <label class="field"
+              ><span>Enddatum (einschließlich)</span
+              ><input type="date" formControlName="end" required
+            /></label>
+          </div>
+          @if (schoolYearError()) {
+            <p class="form-error" role="alert">{{ schoolYearError() }}</p>
+          }
+          <p-button type="submit" label="Schuljahr anlegen" icon="pi pi-plus" />
+        </form>
+      </section>
+    }
     @switch (view()) {
       @case ('capture') {
         <div class="capture-grid">
@@ -301,15 +367,52 @@
             <button
               type="button"
               aria-label="Vorheriger Zeitraum"
+              [disabled]="!canChangeAnalysisPeriod(-1)"
               (click)="changeAnalysisPeriod(-1)"
             >
               <i class="pi pi-chevron-left"></i></button
             ><strong>{{ periodLabel() }}</strong
-            ><button type="button" aria-label="Nächster Zeitraum" (click)="changeAnalysisPeriod(1)">
+            ><button
+              type="button"
+              aria-label="Nächster Zeitraum"
+              [disabled]="!canChangeAnalysisPeriod(1)"
+              (click)="changeAnalysisPeriod(1)"
+            >
               <i class="pi pi-chevron-right"></i>
             </button>
           </div>
         </div>
+        @if (analysisPeriod() === 'schoolYear') {
+          <section class="card school-year-selection">
+            @if (schoolYears().length) {
+              <label class="field"
+                ><span>Schuljahr auswählen</span>
+                <select
+                  [value]="selectedSchoolYearId()"
+                  (change)="selectedSchoolYearId.set($any($event.target).value)"
+                >
+                  @for (year of schoolYears(); track year.id) {
+                    <option [value]="year.id">{{ year.name }}</option>
+                  }
+                </select>
+              </label>
+              @if (selectedSchoolYear(); as year) {
+                <p>
+                  {{ year.start | date: 'dd.MM.yyyy' }} –
+                  {{ year.end | date: 'dd.MM.yyyy' }} (einschließlich)
+                </p>
+              }
+            } @else {
+              <p>
+                Lege ein Schuljahr mit Start- und Enddatum an, um die zugehörigen Arbeitszeiten
+                auszuwerten.
+              </p>
+            }
+            <button class="text-button" type="button" (click)="showSchoolYears.set(true)">
+              Schuljahre verwalten <i class="pi pi-cog"></i>
+            </button>
+          </section>
+        }
         <div class="stat-grid">
           <article class="card">
             <span>Gesamtzeit</span

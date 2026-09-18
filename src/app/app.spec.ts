@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { FormGroupDirective } from '@angular/forms';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
+import { SchoolYearStore } from './core/school-year.store';
 import { WorkTimeStore } from './core/work-time.store';
 import { isoDate, periodBounds, shiftPeriod, WorkPeriod } from './core/work-date';
 
@@ -169,7 +170,7 @@ describe('App', () => {
     );
   });
 
-  it.each<WorkPeriod>(['day', 'week', 'month', 'schoolYear'])(
+  it.each<WorkPeriod>(['day', 'week', 'month'])(
     'navigates analysis %s periods and keeps charts in sync',
     (period) => {
       const fixture = TestBed.createComponent(App);
@@ -181,7 +182,7 @@ describe('App', () => {
       fixture.detectChanges();
       fixture.nativeElement.querySelectorAll('.sidebar nav button')[2].click();
       fixture.detectChanges();
-      const index = ['day', 'week', 'month', 'schoolYear'].indexOf(period);
+      const index = ['day', 'week', 'month'].indexOf(period);
       fixture.nativeElement.querySelectorAll('.period-tabs button')[index].click();
       fixture.detectChanges();
       const label = () => fixture.nativeElement.querySelector('.period-nav strong').textContent;
@@ -203,7 +204,7 @@ describe('App', () => {
       expect(fixture.nativeElement.querySelector('.donut strong').textContent).toBe('0:00');
     },
   );
-  it.each<WorkPeriod>(['day', 'week', 'month', 'schoolYear'])(
+  it.each<WorkPeriod>(['day', 'week', 'month'])(
     'shows category entries only within the selected %s period',
     (period) => {
       const fixture = TestBed.createComponent(App);
@@ -233,7 +234,7 @@ describe('App', () => {
       fixture.detectChanges();
       fixture.nativeElement
         .querySelectorAll('.period-tabs button')
-        [['day', 'week', 'month', 'schoolYear'].indexOf(period)].click();
+        [['day', 'week', 'month'].indexOf(period)].click();
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('#category-entries')).toBeNull();
       fixture.nativeElement
@@ -266,4 +267,91 @@ describe('App', () => {
       expect(fixture.nativeElement.querySelector('#category-entries')).toBeNull();
     },
   );
+  it('creates a school year through settings and reports matching entries including both boundaries', () => {
+    const fixture = TestBed.createComponent(App);
+    const store = TestBed.inject(WorkTimeStore);
+    for (const date of ['2026-09-06', '2026-09-07', '2027-07-23', '2027-07-24']) {
+      store.add({ category: 'LESSON', date, durationMinutes: 30, note: date });
+    }
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('[aria-label="Schuljahre verwalten"]').click();
+    fixture.detectChanges();
+    const form = fixture.debugElement
+      .query(By.css('.school-year-form'))
+      .injector.get(FormGroupDirective).form;
+    form.setValue({ name: 'Mein Schuljahr', start: '2026-09-07', end: '2027-07-23' });
+    fixture.nativeElement
+      .querySelector('.school-year-form')
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(TestBed.inject(SchoolYearStore).years()).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('.school-year-list').textContent).toContain(
+      '07.09.2026',
+    );
+    fixture.nativeElement.querySelector('[aria-label="Schuljahrverwaltung schließen"]').click();
+    fixture.nativeElement.querySelectorAll('.sidebar nav button')[2].click();
+    fixture.detectChanges();
+    fixture.nativeElement.querySelectorAll('.period-tabs button')[3].click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.school-year-selection').textContent).toContain(
+      '23.07.2027',
+    );
+    expect(fixture.nativeElement.querySelector('.donut strong').textContent).toBe('1:00');
+    const app = fixture.componentInstance;
+    expect(
+      app['analysisEntries']()
+        .map((entry) => entry.date)
+        .sort(),
+    ).toEqual(['2026-09-07', '2027-07-23']);
+    expect(app['analysisBars']().reduce((sum, bar) => sum + bar.minutes, 0)).toBe(60);
+    fixture.nativeElement.querySelector('[aria-label="Unterricht: Zeiteinträge anzeigen"]').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('#category-entries tbody tr')).toHaveLength(2);
+    const entry = app['analysisEntries']()[0];
+    store.edit(entry.id, {
+      category: entry.category,
+      date: '2027-07-24',
+      durationMinutes: 30,
+      note: '',
+    });
+    fixture.detectChanges();
+    expect(app['analysisMinutes']()).toBe(30);
+    expect(app['categoryEntries']()).toHaveLength(1);
+  });
+
+  it('navigates between configured school years rather than assumed calendar bounds', () => {
+    const years = TestBed.inject(SchoolYearStore);
+    const first = years.add({ name: 'Erstes', start: '2025-09-15', end: '2026-07-20' });
+    const second = years.add({ name: 'Zweites', start: '2026-09-07', end: '2027-07-23' });
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    app['selectedSchoolYearId'].set(second.id);
+    app['analysisPeriod'].set('schoolYear');
+    app['view'].set('analysis');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Nächster Zeitraum"]').disabled).toBe(
+      true,
+    );
+    fixture.nativeElement.querySelector('[aria-label="Vorheriger Zeitraum"]').click();
+    fixture.detectChanges();
+    expect(app['selectedSchoolYear']()?.id).toBe(first.id);
+    expect(fixture.nativeElement.querySelector('[aria-label="Vorheriger Zeitraum"]').disabled).toBe(
+      true,
+    );
+    fixture.nativeElement.querySelector('[aria-label="Nächster Zeitraum"]').click();
+    fixture.detectChanges();
+    expect(app['selectedSchoolYear']()?.id).toBe(second.id);
+  });
+
+  it('shows an empty state without inventing school year dates', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.componentInstance['view'].set('analysis');
+    fixture.componentInstance['analysisPeriod'].set('schoolYear');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.school-year-selection').textContent).toContain(
+      'Lege ein Schuljahr',
+    );
+    expect(fixture.componentInstance['analysisEntries']()).toEqual([]);
+    expect(fixture.componentInstance['analysisBars']()).toEqual([]);
+  });
 });

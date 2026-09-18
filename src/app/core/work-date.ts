@@ -10,7 +10,7 @@ export function weekStart(date: Date): Date {
   return start;
 }
 
-export type WorkPeriod = 'day' | 'week' | 'month' | 'schoolYear';
+export type WorkPeriod = 'day' | 'week' | 'month';
 
 export function periodBounds(date: Date, period: WorkPeriod): { start: Date; end: Date } {
   let start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -20,10 +20,6 @@ export function periodBounds(date: Date, period: WorkPeriod): { start: Date; end
       break;
     case 'month':
       start.setDate(1);
-      break;
-    // Schuljahr: 1. August bis einschließlich 31. Juli.
-    case 'schoolYear':
-      start = new Date(date.getFullYear() - (date.getMonth() < 7 ? 1 : 0), 7, 1);
       break;
   }
   const end = new Date(start);
@@ -36,9 +32,6 @@ export function periodBounds(date: Date, period: WorkPeriod): { start: Date; end
       break;
     case 'month':
       end.setMonth(end.getMonth() + 1);
-      break;
-    case 'schoolYear':
-      end.setFullYear(end.getFullYear() + 1);
       break;
   }
   return { start, end };
@@ -55,9 +48,6 @@ export function shiftPeriod(date: Date, period: WorkPeriod, direction: number): 
       break;
     case 'month':
       start.setMonth(start.getMonth() + direction);
-      break;
-    case 'schoolYear':
-      start.setFullYear(start.getFullYear() + direction);
       break;
   }
   return start;
