@@ -208,6 +208,7 @@ legend,
 }
 .manual-fields {
   display: grid;
+  align-items: start;
   grid-template-columns: minmax(0, 0.75fr) minmax(0, 1.25fr);
   gap: 18px;
 }
@@ -221,10 +222,15 @@ legend,
   gap: 8px;
 }
 .quick-times {
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   gap: 6px;
 }
 .quick-times button {
+  display: grid;
+  gap: 3px;
+  min-height: 44px;
   padding: 6px 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -662,9 +668,6 @@ legend,
   }
   .manual-fields {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .quick-times button {
-    flex: 1;
   }
   :host ::ng-deep .save-button {
     box-shadow: 0 7px 18px rgb(23 63 95 / 25%);

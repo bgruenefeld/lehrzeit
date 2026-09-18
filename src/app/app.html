@@ -177,11 +177,25 @@
                         buttonLayout="horizontal"
                       />
                     </div>
-                    <div class="quick-times">
-                      <button type="button" (click)="setDuration(45)">45 Min.</button
-                      ><button type="button" (click)="setDuration(90)">90 Min.</button
-                      ><button type="button" (click)="setDuration(120)">2 Std.</button>
-                    </div>
+                  </div>
+                  <div class="quick-times" role="group" aria-label="Dauer schnell auswählen">
+                    @for (lessons of [1, 2, 3, 4, 5, 6, 7, 8]; track lessons) {
+                      <button
+                        type="button"
+                        (click)="setDuration(lessons * 45)"
+                        [attr.aria-label]="
+                          lessons +
+                          (lessons === 1 ? ' Schulstunde' : ' Schulstunden') +
+                          ', ' +
+                          lessons * 45 +
+                          ' Minuten'
+                        "
+                      >
+                        <span>{{ lessons }} Schulstd.</span>
+                        <small>{{ lessons * 45 }} Min.</small>
+                      </button>
+                    }
+                    <button type="button" (click)="setDuration(120)">2 Std.</button>
                   </div>
                 </div>
               } @else {
@@ -223,14 +237,14 @@
           <aside class="card day-card">
             <div class="card-heading">
               <div>
-                <p>Heute</p>
-                <h2>{{ formatDuration(totalTodayMinutes()) }}</h2>
+                <p>{{ selectedDayLabel() }}</p>
+                <h2>{{ formatDuration(selectedDayMinutes()) }}</h2>
               </div>
               <span>von 8 Std.</span>
             </div>
-            <p-progressbar [value]="todayProgress()" [showValue]="false" />
+            <p-progressbar [value]="selectedDayProgress()" [showValue]="false" />
             <div class="timeline">
-              @for (entry of todayEntries(); track entry.id) {
+              @for (entry of selectedDayEntries(); track entry.id) {
                 <article>
                   <i class="timeline-dot" [style.background]="category(entry.category).color"></i>
                   <div>
@@ -257,10 +271,10 @@
                   </div>
                 </article>
               } @empty {
-                <p class="empty-state">Heute wurde noch keine Arbeitszeit erfasst.</p>
+                <p class="empty-state">Für diesen Tag wurde noch keine Arbeitszeit erfasst.</p>
               }
             </div>
-            <button class="text-button" type="button" (click)="setView('overview')">
+            <button class="text-button" type="button" (click)="showSelectedWeek()">
               Alle Einträge ansehen <i class="pi pi-arrow-right"></i>
             </button>
           </aside>

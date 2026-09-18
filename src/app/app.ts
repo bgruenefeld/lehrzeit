@@ -1,5 +1,6 @@
 import { CommonModule, DatePipe } from '@angular/common';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MessageService } from '@openng/optimus-ui/api';
 import { Button } from '@openng/optimus-ui/button';
@@ -129,16 +130,11 @@ export class App implements OnDestroy {
   protected readonly overviewDate = signal(weekStart(new Date()));
   protected readonly analysisDate = signal(new Date());
   protected readonly entries = computed(() => this.entriesInPeriod(this.overviewDate(), 'week'));
-  protected readonly todayEntries = this.store.todayEntries;
-  protected readonly totalTodayMinutes = this.store.totalTodayMinutes;
   protected readonly totalWeekMinutes = computed(() =>
     this.entries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
   );
   protected readonly weekProgress = computed(() =>
     Math.min(100, Math.round((this.totalWeekMinutes() / (40 * 60)) * 100)),
-  );
-  protected readonly todayProgress = computed(() =>
-    Math.min(100, Math.round((this.totalTodayMinutes() / (8 * 60)) * 100)),
   );
   protected readonly timerLabel = computed(() => this.formatClock(this.timerSeconds()));
   protected readonly pageTitle = computed(
@@ -162,6 +158,39 @@ export class App implements OnDestroy {
     }),
     note: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(240)] }),
   });
+
+  private readonly captureDate = toSignal(this.form.controls.date.valueChanges, {
+    initialValue: this.form.controls.date.value,
+  });
+  protected readonly selectedDay = computed(() => {
+    const date = this.captureDate();
+    return date instanceof Date && !isNaN(date.getTime()) ? isoDate(date) : null;
+  });
+  protected readonly selectedDayLabel = computed(() => {
+    const day = this.selectedDay();
+    if (!day) return 'Bitte Datum auswählen';
+    if (day === isoDate(new Date())) return 'Heute';
+    return new Intl.DateTimeFormat('de-DE', {
+      weekday: 'short',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(this.captureDate());
+  });
+  protected readonly selectedDayEntries = computed(() =>
+    this.store.entries().filter((entry) => entry.date === this.selectedDay()),
+  );
+  protected readonly selectedDayMinutes = computed(() =>
+    this.selectedDayEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
+  );
+  protected readonly selectedDayProgress = computed(() =>
+    Math.min(100, Math.round((this.selectedDayMinutes() / (8 * 60)) * 100)),
+  );
+
+  protected showSelectedWeek(): void {
+    if (this.selectedDay()) this.overviewDate.set(weekStart(this.captureDate()));
+    this.setView('overview');
+  }
 
   private captureDraft?: {
     value: ReturnType<App['form']['getRawValue']>;

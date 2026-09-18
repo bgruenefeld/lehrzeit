@@ -354,4 +354,66 @@ describe('App', () => {
     expect(fixture.componentInstance['analysisEntries']()).toEqual([]);
     expect(fixture.componentInstance['analysisBars']()).toEqual([]);
   });
+  it('shows the selected capture day and updates its entries, total and progress', () => {
+    const fixture = TestBed.createComponent(App);
+    const store = TestBed.inject(WorkTimeStore);
+    const date = new Date(2025, 0, 15);
+    store.add({
+      category: 'LESSON',
+      date: isoDate(new Date()),
+      durationMinutes: 45,
+      note: 'Heute',
+    });
+    store.add({
+      category: 'OTHER',
+      date: isoDate(date),
+      durationMinutes: 120,
+      note: 'Gewählter Tag',
+    });
+    fixture.detectChanges();
+    const card = () => fixture.nativeElement.querySelector('.day-card');
+    expect(card().querySelector('.card-heading p').textContent).toBe('Heute');
+    fixture.componentInstance['form'].controls.date.setValue(date);
+    fixture.detectChanges();
+    expect(card().querySelector('.card-heading p').textContent).toContain('15.01.2025');
+    expect(card().querySelector('h2').textContent).toBe('2 Std.');
+    expect(card().querySelector('.timeline').textContent).toContain('Gewählter Tag');
+    expect(card().querySelector('.timeline').textContent).not.toContain('Heute');
+    expect(fixture.componentInstance['selectedDayProgress']()).toBe(25);
+    fixture.componentInstance['form'].patchValue({ hours: 1, minutes: 0, note: 'Neu' });
+    fixture.nativeElement
+      .querySelector('form')
+      .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(card().querySelectorAll('.timeline article')).toHaveLength(2);
+    expect(card().querySelector('h2').textContent).toBe('3 Std.');
+    card().querySelector('[aria-label="Eintrag löschen"]').click();
+    fixture.detectChanges();
+    expect(card().querySelector('h2').textContent).toBe('2 Std.');
+    card().querySelector('.text-button').click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.entries-list').textContent).toContain(
+      'Gewählter Tag',
+    );
+    expect(fixture.nativeElement.querySelector('.entries-list').textContent).not.toContain('Heute');
+  });
+
+  it('handles empty days and cleared date input in the day details', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const dateControl = fixture.componentInstance['form'].controls.date;
+    dateControl.setValue(new Date(2025, 0, 16));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.day-card .empty-state').textContent).toContain(
+      'Für diesen Tag',
+    );
+    // DatePicker can emit null when its input is cleared despite the non-nullable form type.
+    dateControl.setValue(null!);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.day-card .card-heading p').textContent).toBe(
+      'Bitte Datum auswählen',
+    );
+    expect(fixture.componentInstance['selectedDayEntries']()).toEqual([]);
+    expect(fixture.componentInstance['selectedDayMinutes']()).toBe(0);
+  });
 });
