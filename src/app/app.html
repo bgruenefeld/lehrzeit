@@ -1,0 +1,349 @@
+<p-toast position="bottom-right" />
+<div class="app-shell">
+  <aside class="sidebar" aria-label="Hauptnavigation">
+    <button
+      class="brand"
+      type="button"
+      (click)="setView('capture')"
+      aria-label="Lehrzeit Startseite"
+    >
+      <span class="brand-mark">L</span><span>Lehrzeit</span>
+    </button>
+    <nav>
+      <button type="button" [class.active]="view() === 'capture'" (click)="setView('capture')">
+        <i class="pi pi-plus"></i> Erfassen
+      </button>
+      <button type="button" [class.active]="view() === 'overview'" (click)="setView('overview')">
+        <i class="pi pi-list"></i> Übersicht
+      </button>
+      <button type="button" [class.active]="view() === 'analysis'" (click)="setView('analysis')">
+        <i class="pi pi-chart-bar"></i> Auswertung
+      </button>
+    </nav>
+    <div class="school-year"><span>Schuljahr</span><strong>2026 / 27</strong></div>
+    <div class="profile">
+      <span class="avatar">AG</span
+      ><span><strong>Anke Grünefeld</strong><small>Oberschule Jade</small></span>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <div>
+        <p>{{ todayLabel }}</p>
+        <h1>{{ pageTitle() }}</h1>
+      </div>
+      <button class="round-button" type="button" aria-label="Einstellungen">
+        <i class="pi pi-cog"></i>
+      </button>
+    </header>
+
+    @switch (view()) {
+      @case ('capture') {
+        <div class="capture-grid">
+          <section class="card entry-card">
+            <div class="mode-switch" role="tablist" aria-label="Art der Erfassung">
+              <button
+                type="button"
+                role="tab"
+                [attr.aria-selected]="entryMode() === 'manual'"
+                [class.active]="entryMode() === 'manual'"
+                (click)="entryMode.set('manual')"
+              >
+                Manuell
+              </button>
+              <button
+                type="button"
+                role="tab"
+                [attr.aria-selected]="entryMode() === 'timer'"
+                [class.active]="entryMode() === 'timer'"
+                (click)="entryMode.set('timer')"
+              >
+                Stoppuhr
+              </button>
+            </div>
+            <form [formGroup]="form" (ngSubmit)="saveEntry()">
+              <fieldset>
+                <legend>Was hast du gemacht?</legend>
+                <div class="category-grid">
+                  @for (item of categories; track item.id) {
+                    <button
+                      class="category"
+                      type="button"
+                      [class.selected]="selectedCategory() === item.id"
+                      [style.--category-color]="item.color"
+                      (click)="selectCategory(item.id)"
+                    >
+                      <i [class]="item.icon"></i><span>{{ item.label }}</span>
+                    </button>
+                  }
+                </div>
+              </fieldset>
+
+              @if (entryMode() === 'manual') {
+                <div class="manual-fields">
+                  <label class="field"
+                    ><span>Datum</span
+                    ><p-datepicker
+                      formControlName="date"
+                      dateFormat="dd.mm.yy"
+                      [showIcon]="true"
+                      [fluid]="true"
+                  /></label>
+                  <div class="field duration-field">
+                    <span>Dauer</span>
+                    <div class="duration-inputs">
+                      <p-inputnumber
+                        formControlName="hours"
+                        suffix=" Std."
+                        [min]="0"
+                        [max]="16"
+                        [showButtons]="true"
+                        buttonLayout="horizontal"
+                      />
+                      <p-inputnumber
+                        formControlName="minutes"
+                        suffix=" Min."
+                        [min]="0"
+                        [max]="59"
+                        [step]="5"
+                        [showButtons]="true"
+                        buttonLayout="horizontal"
+                      />
+                    </div>
+                    <div class="quick-times">
+                      <button type="button" (click)="setDuration(45)">45 Min.</button
+                      ><button type="button" (click)="setDuration(90)">90 Min.</button
+                      ><button type="button" (click)="setDuration(120)">2 Std.</button>
+                    </div>
+                  </div>
+                </div>
+              } @else {
+                <div class="timer-panel">
+                  <span>Laufende Zeit</span><strong>{{ timerLabel() }}</strong>
+                  <p-button
+                    type="button"
+                    [icon]="timerRunning() ? 'pi pi-pause' : 'pi pi-play'"
+                    [label]="
+                      timerRunning() ? 'Pausieren' : timerSeconds() ? 'Fortsetzen' : 'Starten'
+                    "
+                    [rounded]="true"
+                    (onClick)="toggleTimer()"
+                  />
+                </div>
+              }
+
+              <label class="field note-field"
+                ><span>Notiz <small>optional</small></span
+                ><textarea
+                  pTextarea
+                  formControlName="note"
+                  rows="2"
+                  placeholder="z. B. Korrektur Klassenarbeit 8b"
+                ></textarea>
+              </label>
+              <p-button
+                styleClass="save-button"
+                type="submit"
+                icon="pi pi-check"
+                label="Arbeitszeit speichern"
+              />
+            </form>
+          </section>
+
+          <aside class="card day-card">
+            <div class="card-heading">
+              <div>
+                <p>Heute</p>
+                <h2>{{ formatDuration(totalTodayMinutes()) }}</h2>
+              </div>
+              <span>von 8 Std.</span>
+            </div>
+            <p-progressbar [value]="todayProgress()" [showValue]="false" />
+            <div class="timeline">
+              @for (entry of todayEntries(); track entry.id) {
+                <article>
+                  <i class="timeline-dot" [style.background]="category(entry.category).color"></i>
+                  <div>
+                    <strong>{{ category(entry.category).label }}</strong
+                    ><small
+                      >{{ formatDuration(entry.durationMinutes) }}
+                      @if (entry.note) {
+                        · {{ entry.note }}
+                      }
+                    </small>
+                  </div>
+                  <button type="button" aria-label="Eintrag löschen" (click)="removeEntry(entry)">
+                    <i class="pi pi-trash"></i>
+                  </button>
+                </article>
+              } @empty {
+                <p class="empty-state">Heute wurde noch keine Arbeitszeit erfasst.</p>
+              }
+            </div>
+            <button class="text-button" type="button" (click)="setView('overview')">
+              Alle Einträge ansehen <i class="pi pi-arrow-right"></i>
+            </button>
+          </aside>
+        </div>
+      }
+
+      @case ('overview') {
+        <div class="section-toolbar">
+          <div class="period-nav">
+            <button type="button" aria-label="Vorherige Woche">
+              <i class="pi pi-chevron-left"></i></button
+            ><strong>14.–20. September 2026</strong
+            ><button type="button" aria-label="Nächste Woche">
+              <i class="pi pi-chevron-right"></i>
+            </button>
+          </div>
+          <p-button icon="pi pi-plus" label="Zeit erfassen" (onClick)="setView('capture')" />
+        </div>
+        <section class="card week-summary">
+          <div>
+            <span>Diese Woche</span><strong>{{ formatDuration(totalWeekMinutes()) }}</strong
+            ><small>von 40 Std.</small>
+          </div>
+          <div class="ring" [style.--progress]="weekProgress() + '%'">
+            {{ weekProgress() }}<small>%</small>
+          </div>
+          <div class="week-bars">
+            <span style="--height: 76%"><i></i><small>Mo</small></span
+            ><span style="--height: 91%"><i></i><small>Di</small></span
+            ><span style="--height: 84%"><i></i><small>Mi</small></span
+            ><span style="--height: 68%"><i></i><small>Do</small></span
+            ><span class="today" style="--height: 61%"><i></i><small>Fr</small></span>
+          </div>
+        </section>
+        <section class="card entries-list" aria-label="Arbeitszeiteinträge">
+          <div class="entry-row header">
+            <span>Datum</span><span>Tätigkeit</span><span>Dauer</span><span>Notiz</span
+            ><span></span>
+          </div>
+          @for (entry of entries(); track entry.id) {
+            <div class="entry-row">
+              <span
+                ><strong>{{ entry.date | date: 'EEE, dd.MM.' : '' : 'de-DE' }}</strong></span
+              >
+              <span
+                ><i class="mini-dot" [style.background]="category(entry.category).color"></i
+                >{{ category(entry.category).label }}</span
+              >
+              <strong>{{ formatDuration(entry.durationMinutes) }}</strong
+              ><span>{{ entry.note || '–' }}</span>
+              <button type="button" aria-label="Eintrag löschen" (click)="removeEntry(entry)">
+                <i class="pi pi-trash"></i>
+              </button>
+            </div>
+          }
+        </section>
+      }
+
+      @case ('analysis') {
+        <div class="analysis-head">
+          <div class="period-tabs" role="tablist" aria-label="Auswertungszeitraum">
+            <button
+              type="button"
+              [class.active]="analysisPeriod() === 'day'"
+              (click)="analysisPeriod.set('day')"
+            >
+              Tag
+            </button>
+            <button
+              type="button"
+              [class.active]="analysisPeriod() === 'week'"
+              (click)="analysisPeriod.set('week')"
+            >
+              Woche
+            </button>
+            <button
+              type="button"
+              [class.active]="analysisPeriod() === 'month'"
+              (click)="analysisPeriod.set('month')"
+            >
+              Monat
+            </button>
+            <button
+              type="button"
+              [class.active]="analysisPeriod() === 'schoolYear'"
+              (click)="analysisPeriod.set('schoolYear')"
+            >
+              Schuljahr
+            </button>
+          </div>
+          <div class="period-nav">
+            <button type="button"><i class="pi pi-chevron-left"></i></button
+            ><strong>{{ periodLabel() }}</strong
+            ><button type="button"><i class="pi pi-chevron-right"></i></button>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <article class="card">
+            <span>Gesamtzeit</span><strong>31:45 <small>Std.</small></strong>
+            <p class="positive">+ 2:15 Std. zur Vorwoche</p>
+          </article>
+          <article class="card">
+            <span>Ø pro Arbeitstag</span><strong>6:21 <small>Std.</small></strong>
+            <p>5 erfasste Tage</p>
+          </article>
+          <article class="card">
+            <span>Unterrichtsanteil</span><strong>47 <small>%</small></strong>
+            <p>14:55 Std.</p>
+          </article>
+        </div>
+        <div class="analysis-grid">
+          <section class="card chart-card">
+            <div class="card-heading">
+              <div>
+                <p>Zeitverteilung</p>
+                <h2>Nach Tätigkeit</h2>
+              </div>
+            </div>
+            <div class="donut-layout">
+              <div class="donut">
+                <span><strong>31:45</strong><small>Stunden</small></span>
+              </div>
+              <ul>
+                @for (item of categories; track item.id) {
+                  <li>
+                    <i [style.background]="item.color"></i><span>{{ item.label }}</span
+                    ><strong>{{ item.sampleDuration }}</strong
+                    ><small>{{ item.sampleShare }} %</small>
+                  </li>
+                }
+              </ul>
+            </div>
+          </section>
+          <section class="card chart-card">
+            <div class="card-heading">
+              <div>
+                <p>Wochenverlauf</p>
+                <h2>Arbeitszeit pro Tag</h2>
+              </div>
+            </div>
+            <div class="bar-chart">
+              <span style="--height: 78%"><b>7:35</b><i></i><small>Mo</small></span
+              ><span style="--height: 92%"><b>8:45</b><i></i><small>Di</small></span
+              ><span style="--height: 83%"><b>8:05</b><i></i><small>Mi</small></span
+              ><span style="--height: 67%"><b>6:25</b><i></i><small>Do</small></span
+              ><span class="today" style="--height: 65%"><b>6:15</b><i></i><small>Fr</small></span>
+            </div>
+          </section>
+        </div>
+      }
+    }
+  </main>
+
+  <nav class="bottom-nav" aria-label="Mobile Hauptnavigation">
+    <button type="button" [class.active]="view() === 'capture'" (click)="setView('capture')">
+      <i class="pi pi-plus"></i><span>Erfassen</span>
+    </button>
+    <button type="button" [class.active]="view() === 'overview'" (click)="setView('overview')">
+      <i class="pi pi-list"></i><span>Übersicht</span>
+    </button>
+    <button type="button" [class.active]="view() === 'analysis'" (click)="setView('analysis')">
+      <i class="pi pi-chart-bar"></i><span>Auswertung</span>
+    </button>
+  </nav>
+</div>
