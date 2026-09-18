@@ -84,33 +84,6 @@
 .school-year strong {
   color: #fff;
 }
-.profile {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 18px 10px 0;
-}
-.profile > span:last-child {
-  display: grid;
-}
-.profile strong {
-  font-size: 0.88rem;
-}
-.profile small {
-  margin-top: 2px;
-  color: #b9c8d1;
-}
-.avatar {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  color: var(--ink);
-  background: #dce8ee;
-  font-size: 0.78rem;
-  font-weight: 800;
-}
 main {
   max-width: 1460px;
   margin-left: 244px;
@@ -465,7 +438,7 @@ legend,
   display: block;
   width: 28px;
   height: var(--height);
-  min-height: 8px;
+  min-height: 0;
   border-radius: 6px 6px 2px 2px;
   background: #d9e3e8;
 }
@@ -548,16 +521,7 @@ legend,
   width: 180px;
   height: 180px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle 56px, #fff 98%, transparent),
-    conic-gradient(
-      #176b87 0 47%,
-      #7256a5 47% 73%,
-      #c76a2a 73% 84%,
-      #2b8065 84% 91%,
-      #b0465b 91% 96%,
-      #68717c 96%
-    );
+  background: radial-gradient(circle 56px, #fff 98%, transparent), var(--distribution, #e7ecef);
 }
 .donut span {
   display: grid;

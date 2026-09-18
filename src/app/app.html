@@ -20,10 +20,8 @@
         <i class="pi pi-chart-bar"></i> Auswertung
       </button>
     </nav>
-    <div class="school-year"><span>Schuljahr</span><strong>2026 / 27</strong></div>
-    <div class="profile">
-      <span class="avatar">AG</span
-      ><span><strong>Anke Grünefeld</strong><small>Oberschule Jade</small></span>
+    <div class="school-year">
+      <span>Schuljahr</span><strong>{{ schoolYearLabel }}</strong>
     </div>
   </aside>
 
@@ -139,7 +137,7 @@
                   pTextarea
                   formControlName="note"
                   rows="2"
-                  placeholder="z. B. Korrektur Klassenarbeit 8b"
+                  placeholder="Notiz hinzufügen"
                 ></textarea>
               </label>
               <p-button
@@ -193,7 +191,7 @@
           <div class="period-nav">
             <button type="button" aria-label="Vorherige Woche">
               <i class="pi pi-chevron-left"></i></button
-            ><strong>14.–20. September 2026</strong
+            ><strong>{{ weekLabel }}</strong
             ><button type="button" aria-label="Nächste Woche">
               <i class="pi pi-chevron-right"></i>
             </button>
@@ -209,11 +207,11 @@
             {{ weekProgress() }}<small>%</small>
           </div>
           <div class="week-bars">
-            <span style="--height: 76%"><i></i><small>Mo</small></span
-            ><span style="--height: 91%"><i></i><small>Di</small></span
-            ><span style="--height: 84%"><i></i><small>Mi</small></span
-            ><span style="--height: 68%"><i></i><small>Do</small></span
-            ><span class="today" style="--height: 61%"><i></i><small>Fr</small></span>
+            @for (day of weekDays(); track day.date) {
+              <span [class.today]="day.today" [style.--height]="day.height + '%'"
+                ><i></i><small>{{ day.label }}</small></span
+              >
+            }
           </div>
         </section>
         <section class="card entries-list" aria-label="Arbeitszeiteinträge">
@@ -236,6 +234,8 @@
                 <i class="pi pi-trash"></i>
               </button>
             </div>
+          } @empty {
+            <p class="empty-state">Es wurde noch keine Arbeitszeit erfasst.</p>
           }
         </section>
       }
@@ -280,16 +280,19 @@
         </div>
         <div class="stat-grid">
           <article class="card">
-            <span>Gesamtzeit</span><strong>31:45 <small>Std.</small></strong>
-            <p class="positive">+ 2:15 Std. zur Vorwoche</p>
+            <span>Gesamtzeit</span
+            ><strong>{{ hoursLabel(analysisMinutes()) }} <small>Std.</small></strong>
+            <p>{{ analysisEntries().length }} Einträge</p>
           </article>
           <article class="card">
-            <span>Ø pro Arbeitstag</span><strong>6:21 <small>Std.</small></strong>
-            <p>5 erfasste Tage</p>
+            <span>Ø pro Arbeitstag</span
+            ><strong>{{ hoursLabel(averageMinutes()) }} <small>Std.</small></strong>
+            <p>{{ recordedDays() }} erfasste Tage</p>
           </article>
           <article class="card">
-            <span>Unterrichtsanteil</span><strong>47 <small>%</small></strong>
-            <p>14:55 Std.</p>
+            <span>Unterrichtsanteil</span
+            ><strong>{{ lessonTotal().share | number: '1.0-0' }} <small>%</small></strong>
+            <p>{{ hoursLabel(lessonTotal().minutes) }} Std.</p>
           </article>
         </div>
         <div class="analysis-grid">
@@ -301,15 +304,18 @@
               </div>
             </div>
             <div class="donut-layout">
-              <div class="donut">
-                <span><strong>31:45</strong><small>Stunden</small></span>
+              <div class="donut" [style.--distribution]="donutGradient()">
+                <span
+                  ><strong>{{ hoursLabel(analysisMinutes()) }}</strong
+                  ><small>Stunden</small></span
+                >
               </div>
               <ul>
-                @for (item of categories; track item.id) {
+                @for (item of categoryTotals(); track item.id) {
                   <li>
                     <i [style.background]="item.color"></i><span>{{ item.label }}</span
-                    ><strong>{{ item.sampleDuration }}</strong
-                    ><small>{{ item.sampleShare }} %</small>
+                    ><strong>{{ hoursLabel(item.minutes) }}</strong
+                    ><small>{{ item.share | number: '1.0-0' }} %</small>
                   </li>
                 }
               </ul>
@@ -318,16 +324,17 @@
           <section class="card chart-card">
             <div class="card-heading">
               <div>
-                <p>Wochenverlauf</p>
+                <p>Aktuelle Woche</p>
                 <h2>Arbeitszeit pro Tag</h2>
               </div>
             </div>
             <div class="bar-chart">
-              <span style="--height: 78%"><b>7:35</b><i></i><small>Mo</small></span
-              ><span style="--height: 92%"><b>8:45</b><i></i><small>Di</small></span
-              ><span style="--height: 83%"><b>8:05</b><i></i><small>Mi</small></span
-              ><span style="--height: 67%"><b>6:25</b><i></i><small>Do</small></span
-              ><span class="today" style="--height: 65%"><b>6:15</b><i></i><small>Fr</small></span>
+              @for (day of weekDays(); track day.date) {
+                <span [class.today]="day.today" [style.--height]="day.height * 0.8 + '%'"
+                  ><b>{{ hoursLabel(day.minutes) }}</b
+                  ><i></i><small>{{ day.label }}</small></span
+                >
+              }
             </div>
           </section>
         </div>

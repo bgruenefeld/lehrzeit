@@ -11,6 +11,8 @@ import { Toast } from '@openng/optimus-ui/toast';
 import { CATEGORY_META, WorkCategory, WorkEntry } from './core/work-entry.model';
 import { WorkTimeStore } from './core/work-time.store';
 
+import { isoDate, weekStart } from './core/work-date';
+
 type View = 'capture' | 'overview' | 'analysis';
 type EntryMode = 'manual' | 'timer';
 type AnalysisPeriod = 'day' | 'week' | 'month' | 'schoolYear';
@@ -71,11 +73,11 @@ export class App implements OnDestroy {
 
   protected readonly form = new FormGroup({
     date: new FormControl(new Date(), { nonNullable: true, validators: [Validators.required] }),
-    hours: new FormControl(1, {
+    hours: new FormControl(0, {
       nonNullable: true,
       validators: [Validators.min(0), Validators.max(16)],
     }),
-    minutes: new FormControl(30, {
+    minutes: new FormControl(0, {
       nonNullable: true,
       validators: [Validators.min(0), Validators.max(59)],
     }),
@@ -124,7 +126,7 @@ export class App implements OnDestroy {
 
     this.store.add({
       category: this.selectedCategory(),
-      date: this.toIsoDate(value.date),
+      date: isoDate(value.date),
       durationMinutes,
       note: value.note.trim(),
     });
@@ -160,13 +162,103 @@ export class App implements OnDestroy {
     return this.categories.find((item) => item.id === category)!;
   }
 
+  protected readonly weekLabel = this.dateRangeLabel(weekStart(new Date()), 6);
+  // Schuljahre werden hier vom 1. August bis zum 31. Juli zusammengefasst.
+  private readonly schoolYearStart = new Date().getFullYear() - (new Date().getMonth() < 7 ? 1 : 0);
+  protected readonly schoolYearLabel = `${this.schoolYearStart} / ${String(this.schoolYearStart + 1).slice(-2)}`;
+  protected readonly analysisEntries = computed(() => {
+    const now = new Date();
+    switch (this.analysisPeriod()) {
+      case 'day':
+        return this.todayEntries();
+      case 'week':
+        return this.store.weekEntries();
+      case 'month':
+        return this.store
+          .entries()
+          .filter((entry) => entry.date.slice(0, 7) === isoDate(now).slice(0, 7));
+      case 'schoolYear':
+        return this.store
+          .entries()
+          .filter(
+            (entry) =>
+              entry.date >= `${this.schoolYearStart}-08-01` &&
+              entry.date < `${this.schoolYearStart + 1}-08-01`,
+          );
+    }
+  });
+  protected readonly analysisMinutes = computed(() =>
+    this.analysisEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
+  );
+  protected readonly recordedDays = computed(
+    () => new Set(this.analysisEntries().map((entry) => entry.date)).size,
+  );
+  protected readonly averageMinutes = computed(() =>
+    this.recordedDays() ? Math.round(this.analysisMinutes() / this.recordedDays()) : 0,
+  );
+  protected readonly categoryTotals = computed(() =>
+    this.categories.map((category) => {
+      const minutes = this.analysisEntries()
+        .filter((entry) => entry.category === category.id)
+        .reduce((sum, entry) => sum + entry.durationMinutes, 0);
+      return {
+        ...category,
+        minutes,
+        share: this.analysisMinutes() ? (minutes / this.analysisMinutes()) * 100 : 0,
+      };
+    }),
+  );
+  protected readonly lessonTotal = computed(() => this.categoryTotals()[0]);
+  protected readonly donutGradient = computed(() => {
+    let position = 0;
+    const stops = this.categoryTotals().map((item) => {
+      const start = position;
+      position += item.share;
+      return `${item.color} ${start}% ${position}%`;
+    });
+    return this.analysisMinutes() ? `conic-gradient(${stops.join(', ')})` : '#e7ecef';
+  });
+  protected readonly weekDays = computed(() =>
+    Array.from({ length: 7 }, (_, index) => {
+      const date = weekStart(new Date());
+      date.setDate(date.getDate() + index);
+      const minutes = this.entries()
+        .filter((entry) => entry.date === isoDate(date))
+        .reduce((sum, entry) => sum + entry.durationMinutes, 0);
+      return {
+        date: isoDate(date),
+        label: new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(date),
+        minutes,
+        height: Math.min(100, (minutes / (8 * 60)) * 100),
+        today: isoDate(date) === isoDate(new Date()),
+      };
+    }),
+  );
+
+  protected hoursLabel(minutes: number): string {
+    return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
+  }
+
   protected periodLabel(): string {
     return {
       day: this.todayLabel,
-      week: '14.–20. September 2026',
-      month: 'September 2026',
-      schoolYear: 'Schuljahr 2026 / 27',
+      week: this.weekLabel,
+      month: new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(
+        new Date(),
+      ),
+      schoolYear: `Schuljahr ${this.schoolYearLabel}`,
     }[this.analysisPeriod()];
+  }
+
+  private dateRangeLabel(start: Date, days: number): string {
+    const end = new Date(start);
+    end.setDate(end.getDate() + days);
+    const formatter = new Intl.DateTimeFormat('de-DE', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+    return formatter.formatRange(start, end);
   }
 
   ngOnDestroy(): void {
@@ -177,11 +269,6 @@ export class App implements OnDestroy {
     if (this.timerHandle) clearInterval(this.timerHandle);
     this.timerHandle = undefined;
     this.timerRunning.set(false);
-  }
-
-  private toIsoDate(date: Date): string {
-    const offset = date.getTimezoneOffset();
-    return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 10);
   }
 
   private formatClock(seconds: number): string {

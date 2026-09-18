@@ -1,47 +1,28 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { NewWorkEntry, WorkEntry } from './work-entry.model';
+import { isoDate, weekStart } from './work-date';
 
 const STORAGE_KEY = 'lehrzeit.entries.v1';
-const DEMO_DATE = new Date().toISOString().slice(0, 10);
-const DEMO_ENTRIES: readonly WorkEntry[] = [
-  {
-    id: 'demo-1',
-    category: 'LESSON',
-    date: DEMO_DATE,
-    durationMinutes: 195,
-    note: 'Klassen 7a, 8b, 10a',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'demo-2',
-    category: 'PREPARATION',
-    date: DEMO_DATE,
-    durationMinutes: 90,
-    note: 'Korrektur Klassenarbeit 8b',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'demo-3',
-    category: 'CONFERENCE',
-    date: DEMO_DATE,
-    durationMinutes: 90,
-    note: 'Fachkonferenz Biologie',
-    createdAt: new Date().toISOString(),
-  },
-];
-
 @Injectable({ providedIn: 'root' })
 export class WorkTimeStore {
   private readonly state = signal<readonly WorkEntry[]>(this.load());
   readonly entries = this.state.asReadonly();
   readonly todayEntries = computed(() =>
-    this.entries().filter((entry) => entry.date === DEMO_DATE),
+    this.entries().filter((entry) => entry.date === isoDate(new Date())),
   );
   readonly totalTodayMinutes = computed(() =>
     this.todayEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
   );
+  readonly weekEntries = computed(() => {
+    const start = weekStart(new Date());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return this.entries().filter(
+      (entry) => entry.date >= isoDate(start) && entry.date < isoDate(end),
+    );
+  });
   readonly totalWeekMinutes = computed(() =>
-    this.entries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
+    this.weekEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
   );
 
   add(entry: NewWorkEntry): WorkEntry {
@@ -69,12 +50,19 @@ export class WorkTimeStore {
 
   private load(): readonly WorkEntry[] {
     const value = localStorage.getItem(STORAGE_KEY);
-    if (!value) return DEMO_ENTRIES;
+    if (!value) return [];
     try {
       const parsed: unknown = JSON.parse(value);
-      return Array.isArray(parsed) ? (parsed as WorkEntry[]) : DEMO_ENTRIES;
+      if (!Array.isArray(parsed)) return [];
+      const entries = (parsed as WorkEntry[]).filter(
+        (entry) => !['demo-1', 'demo-2', 'demo-3'].includes(entry.id),
+      );
+      if (entries.length !== parsed.length) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      }
+      return entries;
     } catch {
-      return DEMO_ENTRIES;
+      return [];
     }
   }
 }
