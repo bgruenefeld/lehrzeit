@@ -11,11 +11,11 @@ import { Toast } from '@openng/optimus-ui/toast';
 import { CATEGORY_META, WorkCategory, WorkEntry } from './core/work-entry.model';
 import { WorkTimeStore } from './core/work-time.store';
 
-import { isoDate, weekStart } from './core/work-date';
+import { isoDate, weekStart, periodBounds, shiftPeriod, WorkPeriod } from './core/work-date';
 
 type View = 'capture' | 'overview' | 'analysis';
 type EntryMode = 'manual' | 'timer';
-type AnalysisPeriod = 'day' | 'week' | 'month' | 'schoolYear';
+type AnalysisPeriod = WorkPeriod;
 
 @Component({
   selector: 'app-root',
@@ -47,14 +47,28 @@ export class App implements OnDestroy {
   }).format(new Date());
   protected readonly view = signal<View>('capture');
   protected readonly entryMode = signal<EntryMode>('manual');
+  protected readonly editingId = signal<string | null>(null);
   protected readonly selectedCategory = signal<WorkCategory>('LESSON');
   protected readonly timerSeconds = signal(0);
   protected readonly timerRunning = signal(false);
   protected readonly analysisPeriod = signal<AnalysisPeriod>('week');
-  protected readonly entries = this.store.entries;
+  protected readonly analysisCategory = signal<WorkCategory | null>(null);
+  protected readonly categoryEntries = computed(() =>
+    this.analysisEntries()
+      .filter((entry) => entry.category === this.analysisCategory())
+      .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
+  );
+  protected readonly categoryMinutes = computed(() =>
+    this.categoryEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
+  );
+  protected readonly overviewDate = signal(weekStart(new Date()));
+  protected readonly analysisDate = signal(new Date());
+  protected readonly entries = computed(() => this.entriesInPeriod(this.overviewDate(), 'week'));
   protected readonly todayEntries = this.store.todayEntries;
   protected readonly totalTodayMinutes = this.store.totalTodayMinutes;
-  protected readonly totalWeekMinutes = this.store.totalWeekMinutes;
+  protected readonly totalWeekMinutes = computed(() =>
+    this.entries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
+  );
   protected readonly weekProgress = computed(() =>
     Math.min(100, Math.round((this.totalWeekMinutes() / (40 * 60)) * 100)),
   );
@@ -65,7 +79,7 @@ export class App implements OnDestroy {
   protected readonly pageTitle = computed(
     () =>
       ({
-        capture: 'Arbeitszeit erfassen',
+        capture: this.editingId() ? 'Arbeitszeit bearbeiten' : 'Arbeitszeit erfassen',
         overview: 'Wochenübersicht',
         analysis: 'Auswertung',
       })[this.view()],
@@ -75,16 +89,58 @@ export class App implements OnDestroy {
     date: new FormControl(new Date(), { nonNullable: true, validators: [Validators.required] }),
     hours: new FormControl(0, {
       nonNullable: true,
-      validators: [Validators.min(0), Validators.max(16)],
+      validators: [Validators.required, Validators.min(0), Validators.max(16)],
     }),
     minutes: new FormControl(0, {
       nonNullable: true,
-      validators: [Validators.min(0), Validators.max(59)],
+      validators: [Validators.required, Validators.min(0), Validators.max(59)],
     }),
     note: new FormControl('', { nonNullable: true, validators: [Validators.maxLength(240)] }),
   });
 
+  private captureDraft?: {
+    value: ReturnType<App['form']['getRawValue']>;
+    category: WorkCategory;
+    mode: EntryMode;
+    view: View;
+  };
+
+  protected editEntry(entry: WorkEntry): void {
+    if (!this.editingId()) {
+      this.captureDraft = {
+        value: this.form.getRawValue(),
+        category: this.selectedCategory(),
+        mode: this.entryMode(),
+        view: this.view(),
+      };
+    }
+    this.stopTimer();
+    this.editingId.set(entry.id);
+    this.entryMode.set('manual');
+    this.selectedCategory.set(entry.category);
+    const [year, month, day] = entry.date.split('-').map(Number);
+    this.form.reset({
+      date: new Date(year, month - 1, day),
+      hours: Math.floor(entry.durationMinutes / 60),
+      minutes: entry.durationMinutes % 60,
+      note: entry.note,
+    });
+    this.setView('capture');
+  }
+
+  protected cancelEdit(): void {
+    this.editingId.set(null);
+    if (this.captureDraft) {
+      this.form.reset(this.captureDraft.value);
+      this.selectedCategory.set(this.captureDraft.category);
+      this.entryMode.set(this.captureDraft.mode);
+      this.view.set(this.captureDraft.view);
+      this.captureDraft = undefined;
+    }
+  }
+
   protected setView(view: View): void {
+    if (view !== 'capture' && this.editingId()) this.cancelEdit();
     this.view.set(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -124,12 +180,32 @@ export class App implements OnDestroy {
       return;
     }
 
-    this.store.add({
+    const changes = {
       category: this.selectedCategory(),
       date: isoDate(value.date),
       durationMinutes,
       note: value.note.trim(),
-    });
+    };
+    const editingId = this.editingId();
+    if (editingId) {
+      if (!this.store.edit(editingId, changes)) {
+        this.messages.add({
+          severity: 'warn',
+          summary: 'Eintrag nicht gefunden',
+          detail: 'Der Eintrag wurde bereits gelöscht.',
+        });
+        this.cancelEdit();
+        return;
+      }
+      this.cancelEdit();
+      this.messages.add({
+        severity: 'success',
+        summary: 'Gespeichert',
+        detail: 'Die Arbeitszeit wurde aktualisiert.',
+      });
+      return;
+    }
+    this.store.add(changes);
     this.messages.add({
       severity: 'success',
       summary: 'Gespeichert',
@@ -144,6 +220,7 @@ export class App implements OnDestroy {
 
   protected removeEntry(entry: WorkEntry): void {
     this.store.remove(entry.id);
+    if (this.editingId() === entry.id) this.cancelEdit();
     this.messages.add({
       severity: 'info',
       summary: 'Eintrag entfernt',
@@ -162,31 +239,28 @@ export class App implements OnDestroy {
     return this.categories.find((item) => item.id === category)!;
   }
 
-  protected readonly weekLabel = this.dateRangeLabel(weekStart(new Date()), 6);
-  // Schuljahre werden hier vom 1. August bis zum 31. Juli zusammengefasst.
-  private readonly schoolYearStart = new Date().getFullYear() - (new Date().getMonth() < 7 ? 1 : 0);
+  protected readonly weekLabel = computed(() => this.dateRangeLabel(this.overviewDate(), 6));
+  private readonly schoolYearStart = periodBounds(new Date(), 'schoolYear').start.getFullYear();
   protected readonly schoolYearLabel = `${this.schoolYearStart} / ${String(this.schoolYearStart + 1).slice(-2)}`;
-  protected readonly analysisEntries = computed(() => {
-    const now = new Date();
-    switch (this.analysisPeriod()) {
-      case 'day':
-        return this.todayEntries();
-      case 'week':
-        return this.store.weekEntries();
-      case 'month':
-        return this.store
-          .entries()
-          .filter((entry) => entry.date.slice(0, 7) === isoDate(now).slice(0, 7));
-      case 'schoolYear':
-        return this.store
-          .entries()
-          .filter(
-            (entry) =>
-              entry.date >= `${this.schoolYearStart}-08-01` &&
-              entry.date < `${this.schoolYearStart + 1}-08-01`,
-          );
-    }
-  });
+  protected readonly analysisEntries = computed(() =>
+    this.entriesInPeriod(this.analysisDate(), this.analysisPeriod()),
+  );
+
+  protected changeWeek(direction: number): void {
+    this.overviewDate.update((date) => shiftPeriod(date, 'week', direction));
+  }
+
+  protected changeAnalysisPeriod(direction: number): void {
+    this.analysisDate.update((date) => shiftPeriod(date, this.analysisPeriod(), direction));
+  }
+
+  private entriesInPeriod(date: Date, period: WorkPeriod): readonly WorkEntry[] {
+    const { start, end } = periodBounds(date, period);
+    return this.store
+      .entries()
+      .filter((entry) => entry.date >= isoDate(start) && entry.date < isoDate(end));
+  }
+
   protected readonly analysisMinutes = computed(() =>
     this.analysisEntries().reduce((sum, entry) => sum + entry.durationMinutes, 0),
   );
@@ -220,7 +294,7 @@ export class App implements OnDestroy {
   });
   protected readonly weekDays = computed(() =>
     Array.from({ length: 7 }, (_, index) => {
-      const date = weekStart(new Date());
+      const date = new Date(this.overviewDate());
       date.setDate(date.getDate() + index);
       const minutes = this.entries()
         .filter((entry) => entry.date === isoDate(date))
@@ -235,19 +309,59 @@ export class App implements OnDestroy {
     }),
   );
 
+  protected readonly analysisBars = computed(() => {
+    const period = this.analysisPeriod();
+    const { start, end } = periodBounds(this.analysisDate(), period);
+    const bars = [];
+    for (let date = new Date(start); date < end;) {
+      const next = new Date(date);
+      if (period === 'schoolYear') next.setMonth(next.getMonth() + 1);
+      else next.setDate(next.getDate() + 1);
+      const minutes = this.analysisEntries()
+        .filter((entry) => entry.date >= isoDate(date) && entry.date < isoDate(next))
+        .reduce((sum, entry) => sum + entry.durationMinutes, 0);
+      const label = new Intl.DateTimeFormat(
+        'de-DE',
+        period === 'schoolYear'
+          ? { month: 'short' }
+          : period === 'month'
+            ? { day: 'numeric' }
+            : { weekday: 'short' },
+      ).format(date);
+      bars.push({
+        date: isoDate(date),
+        label,
+        minutes,
+        today: isoDate(date) <= isoDate(new Date()) && isoDate(new Date()) < isoDate(next),
+      });
+      date = next;
+    }
+    const maximum = Math.max(1, ...bars.map((bar) => bar.minutes));
+    return bars.map((bar) => ({ ...bar, height: (bar.minutes / maximum) * 80 }));
+  });
+
   protected hoursLabel(minutes: number): string {
     return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
   }
 
   protected periodLabel(): string {
-    return {
-      day: this.todayLabel,
-      week: this.weekLabel,
-      month: new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(
-        new Date(),
-      ),
-      schoolYear: `Schuljahr ${this.schoolYearLabel}`,
-    }[this.analysisPeriod()];
+    const date = this.analysisDate();
+    const { start } = periodBounds(date, this.analysisPeriod());
+    switch (this.analysisPeriod()) {
+      case 'day':
+        return new Intl.DateTimeFormat('de-DE', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        }).format(date);
+      case 'week':
+        return this.dateRangeLabel(start, 6);
+      case 'month':
+        return new Intl.DateTimeFormat('de-DE', { month: 'long', year: 'numeric' }).format(date);
+      case 'schoolYear':
+        return `Schuljahr ${start.getFullYear()} / ${String(start.getFullYear() + 1).slice(-2)}`;
+    }
   }
 
   private dateRangeLabel(start: Date, days: number): string {

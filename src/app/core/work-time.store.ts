@@ -39,6 +39,14 @@ export class WorkTimeStore {
     this.update(this.entries().filter((entry) => entry.id !== id));
   }
 
+  edit(id: string, changes: NewWorkEntry): boolean {
+    if (!this.entries().some((entry) => entry.id === id)) return false;
+    this.update(
+      this.entries().map((entry) => (entry.id === id ? { ...entry, ...changes } : entry)),
+    );
+    return true;
+  }
+
   clear(): void {
     this.update([]);
   }

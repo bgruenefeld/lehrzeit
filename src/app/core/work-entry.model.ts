@@ -1,5 +1,5 @@
 export type WorkCategory =
-  'LESSON' | 'PREPARATION' | 'CONFERENCE' | 'PARENT_TALK' | 'SUBSTITUTION' | 'OTHER';
+  'LESSON' | 'PREPARATION' | 'CONFERENCE' | 'PARENT_TALK' | 'SUBSTITUTION' | 'OTHER' | 'MINUS_HOURS';
 
 export interface WorkEntry {
   readonly id: string;
@@ -53,5 +53,11 @@ export const CATEGORY_META: ReadonlyArray<{
     label: 'Sonstiges',
     icon: 'pi pi-ellipsis-h',
     color: '#68717c',
+  },
+  {
+    id: 'MINUS_HOURS',
+    label: 'Minusstunden',
+    icon: 'pi pi-minus-circle',
+    color: '#b93838',
   },
 ];
