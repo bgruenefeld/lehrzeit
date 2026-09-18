@@ -377,7 +377,12 @@
                 </h2>
               </div>
             </div>
-            <div class="bar-chart">
+            <div
+              class="bar-chart"
+              tabindex="0"
+              role="region"
+              aria-label="Arbeitszeitdiagramm, horizontal scrollbar"
+            >
               @for (day of analysisBars(); track day.date) {
                 <span [class.today]="day.today" [style.--height]="day.height + '%'"
                   ><b>{{ hoursLabel(day.minutes) }}</b
@@ -385,6 +390,11 @@
                 >
               }
             </div>
+            @if (analysisBars().length > 7) {
+              <p class="chart-scroll-hint">
+                Für weitere Werte im Diagramm nach links oder rechts wischen.
+              </p>
+            }
           </section>
         </div>
         @if (analysisCategory(); as categoryId) {
