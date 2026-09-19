@@ -12,7 +12,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideOptimus({ theme: { preset: Aura } }),
+    provideOptimus({ theme: { preset: Aura, options: { darkModeSelector: false } } }),
     { provide: LOCALE_ID, useValue: 'de-DE' },
   ],
 };
